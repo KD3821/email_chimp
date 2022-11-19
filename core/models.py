@@ -53,8 +53,8 @@ class Campaign(models.Model):
 
 class Email(models.Model):
     sent_time = DateTimeField(verbose_name="Время отправки", auto_now_add=True)
-    campaign_id = ForeignKey(Campaign, verbose_name="ID рассылки", on_delete=models.PROTECT)
-    customer_id = ForeignKey(Customer, verbose_name="ID клиента", on_delete=models.PROTECT)
+    campaign_id = ForeignKey(Campaign, verbose_name="ID рассылки", on_delete=models.PROTECT, related_name='newemails')
+    customer_id = ForeignKey(Customer, verbose_name="ID клиента", on_delete=models.PROTECT, related_name='newemails')
     is_ok = BooleanField(verbose_name="Статус отправки", default=False)
 
     def __str__(self):
