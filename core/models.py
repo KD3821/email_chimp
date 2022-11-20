@@ -28,7 +28,6 @@ class Filter(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        # return f"фильтр: {self.mobile} - {self.tag}"
         return self.slug
 
 class Customer(models.Model):
@@ -53,8 +52,8 @@ class Campaign(models.Model):
 
 class Email(models.Model):
     sent_time = DateTimeField(verbose_name="Время отправки", auto_now_add=True)
-    campaign_id = ForeignKey(Campaign, verbose_name="ID рассылки", on_delete=models.PROTECT, related_name='newemails')
-    customer_id = ForeignKey(Customer, verbose_name="ID клиента", on_delete=models.PROTECT, related_name='newemails')
+    campaign_id = ForeignKey(Campaign, verbose_name="ID рассылки", on_delete=models.PROTECT, related_name='email')
+    customer_id = ForeignKey(Customer, verbose_name="ID клиента", on_delete=models.PROTECT, related_name='email')
     is_ok = BooleanField(verbose_name="Статус отправки", default=False)
 
     def __str__(self):

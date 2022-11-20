@@ -6,13 +6,22 @@ from rest_framework.viewsets import ModelViewSet
 from rest_framework.response import Response
 from rest_framework.reverse import reverse
 from .models import Carrier, Tag, Filter, Customer, Campaign, Email
-from .serializers import CarrierSerializer, TagSerializer, FilterSerializer, CustomerSerializer, CampaignSerializer, EmailSerializer, ReportEmailsSerializer, SendEmailSerializer,\
-    NewEmailSerializer, NewCustomerSerializer, NewCampaignSerializer
+from .serializers import CarrierSerializer, TagSerializer, FilterSerializer, CustomerSerializer, CampaignSerializer,\
+    EmailSerializer, ReportEmailsSerializer, SendEmailSerializer
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import OrderingFilter
 from .reports import all_emails_report
+from rest_framework.decorators import action
+from datetime import datetime, timedelta
+import json
+from .use_requests import use_requests
 
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
+api_key = os.getenv("API_KEY")
+auth = {'Authorization': 'Bearer ' + api_key}
 
 
 class CarrierModelViewSet(ModelViewSet):
@@ -40,10 +49,85 @@ class CampaignModelViewSet(ModelViewSet):
     serializer_class = CampaignSerializer
     filter_backends = [OrderingFilter]
 
+    def list_customers(self, request):
+        customer_filter = Filter.objects.filter(slug=request.data['email_filter'])[0:1].get()
+        customer_carrier = customer_filter.mobile
+        customer_tag = customer_filter.tag
+        if customer_tag:
+            customer_list = Customer.objects.filter(carrier=customer_carrier).filter(tag=customer_tag).values()
+        else:
+            customer_list = Customer.objects.filter(carrier=customer_carrier).values()
+        print(customer_list)
+        return customer_list
+
+    def get_emails(self, request, id_of_camp):
+        present = datetime.now()
+        start_campaign = datetime.strptime(request.data['date_start'], '%Y-%m-%dT%H:%M:%SZ')
+        finish_campaign = datetime.strptime(request.data['date_finish'], '%Y-%m-%dT%H:%M:%SZ')
+        if start_campaign <= present < finish_campaign:
+            mailing_list = self.list_customers(request)
+            msg_list = []
+            for obj in mailing_list.values():
+                data = {}
+                campaign_id = id_of_camp
+                customer_id = obj['id']
+                data['campaign_id'] = campaign_id
+                data['customer_id'] = customer_id
+                serializer = SendEmailSerializer(data=data)
+                if serializer.is_valid():
+                    serializer.save()
+                    msg_list.append(serializer.data)
+            print(msg_list)
+        elif present < start_campaign:
+            print("too early!")
+        else:
+            print("too late!")
+        pass
+
+    def send_emails(self, request, id_of_camp):
+        msgs_list = Email.objects.filter(campaign_id=id_of_camp).select_related('customer_id')
+        msg_list = msgs_list.values()
+        print(msg_list)
+        for msg in msg_list:
+            if msg['is_ok'] == False:
+                msg_tmp={}
+                msg_tmp['id'] = msg['id']
+                msg_tmp['text'] = request.data['text']
+                q_msg = msgs_list.get(id=msg['id'])
+                msg_tmp['phone'] = int(q_msg.customer_id.phone)
+                api_url = 'https://probe.fbrq.cloud/v1/send/{}'.format(msg_tmp['id'])
+                r = use_requests(api_url, msg_tmp, auth)
+                print(r.status_code)
+                if r.ok:
+                    ok_data = {}
+                    ok_data['is_ok'] = True
+                    ok_data['campaign_id'] = msg['campaign_id_id']
+                    ok_data['customer_id'] = msg['customer_id_id']
+                    serializer = SendEmailSerializer(q_msg, data=ok_data)
+                    if serializer.is_valid():
+                        serializer.save()
+                        print('отправлено №' + str(msg_tmp['id']))
+                        print(serializer.data)
+                    else:
+                        print('не валидно')
+                else:
+                    print('Не дошло')
+        pass
+
+    def create(self, request, *args, **kwargs):
+        request.data['text'] = request.data['text']
+        serializer = CampaignSerializer(data=request.data)
+        if serializer.is_valid():
+            self.list_customers(request)
+            serializer.save()
+            print(serializer.data['id'])
+            self.get_emails(request, serializer.data['id'])
+            self.send_emails(request, serializer.data['id'])
+        return Response(serializer.data)
+
 
 class EmailModelViewSet(ModelViewSet):
     queryset = Email.objects.all()
-    # serializer_class = EmailSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["campaign_id__id"]  # to make query with ?campaign_id__id=3
 
@@ -52,53 +136,9 @@ class EmailModelViewSet(ModelViewSet):
             return EmailSerializer
         return SendEmailSerializer
 
-############
-
-class ApiRoot(generics.GenericAPIView):
-    name = 'api-root'
-    def get(self, request, *args, **kwargs):
-        return Response({
-            'newcustomers': reverse(CustomerList.name, request=request),
-            'newcampaigns': reverse(CampaignList.name, request=request),
-            'newemails': reverse(EmailList.name, request=request),
-            })
-
-class CustomerList(ListCreateAPIView):
-    queryset = Customer.objects.all()
-    serializer_class = NewCustomerSerializer
-    name = 'customer-list'
-
-class CustomerDetail(RetrieveUpdateDestroyAPIView):
-    queryset = Customer.objects.all()
-    serializer_class = NewCustomerSerializer
-    name = 'customer-detail'
-
-class CampaignList(ListCreateAPIView):
-    queryset = Campaign.objects.all()
-    serializer_class = NewCampaignSerializer
-    name = 'campaign-list'
-
-class CampaignDetail(RetrieveUpdateDestroyAPIView):
-    queryset = Campaign.objects.all()
-    serializer_class = NewCampaignSerializer
-    name = 'campaign-detail'
-
-class EmailList(ListCreateAPIView):
-    queryset = Email.objects.all()
-    serializer_class = NewEmailSerializer
-    name = 'email-list'
-
-class EmailDetail(RetrieveUpdateDestroyAPIView):
-    queryset = Email.objects.all()
-    serializer_class = NewEmailSerializer
-    name = 'email-detail'
-
-############
 
 class AllEmailReportAPIView(APIView):
     def get(self, request):
         data = all_emails_report()
         serializer = ReportEmailsSerializer(instance=data, many=True)
         return Response(data=serializer.data)
-
-
