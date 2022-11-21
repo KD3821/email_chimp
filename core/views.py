@@ -1,20 +1,16 @@
-from django.shortcuts import render
-from rest_framework import generics
-from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.response import Response
-from rest_framework.reverse import reverse
 from .models import Carrier, Tag, Filter, Customer, Campaign, Email
 from .serializers import CarrierSerializer, TagSerializer, FilterSerializer, CustomerSerializer, CampaignSerializer,\
     EmailSerializer, ReportEmailsSerializer, SendEmailSerializer
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import OrderingFilter
 from .reports import all_emails_report
-from rest_framework.decorators import action
 from datetime import datetime, timedelta
-import json
+from time import sleep
 from .use_requests import use_requests
+from .tasks import send_emails_task
 
 import os
 from dotenv import load_dotenv
@@ -79,9 +75,9 @@ class CampaignModelViewSet(ModelViewSet):
                     msg_list.append(serializer.data)
             print(msg_list)
         elif present < start_campaign:
-            print("too early!")
+            print("too early!")  # set task for celery
         else:
-            print("too late!")
+            print("too late!")  # reply with Error phrase
         pass
 
     def send_emails(self, request, id_of_camp):
@@ -89,6 +85,11 @@ class CampaignModelViewSet(ModelViewSet):
         msg_list = msgs_list.values()
         print(msg_list)
         for msg in msg_list:
+            sleep(2)
+            print('спим')
+            sleep(2)
+            print('идем на API')
+            sleep(2)
             if msg['is_ok'] == False:
                 msg_tmp={}
                 msg_tmp['id'] = msg['id']
@@ -98,6 +99,9 @@ class CampaignModelViewSet(ModelViewSet):
                 api_url = 'https://probe.fbrq.cloud/v1/send/{}'.format(msg_tmp['id'])
                 r = use_requests(api_url, msg_tmp, auth)
                 print(r.status_code)
+                sleep(2)
+                print('спим')
+                sleep(2)
                 if r.ok:
                     ok_data = {}
                     ok_data['is_ok'] = True
@@ -108,21 +112,25 @@ class CampaignModelViewSet(ModelViewSet):
                         serializer.save()
                         print('отправлено №' + str(msg_tmp['id']))
                         print(serializer.data)
+                        sleep(2)
+                        print('спим еще')
+                        sleep(2)
                     else:
-                        print('не валидно')
+                        print('не валидно')  # raise ValidationError
                 else:
-                    print('Не дошло')
+                    print('Не дошло')  # set task for celery
         pass
 
     def create(self, request, *args, **kwargs):
         request.data['text'] = request.data['text']
         serializer = CampaignSerializer(data=request.data)
         if serializer.is_valid():
-            self.list_customers(request)
             serializer.save()
+            self.list_customers(request)
             print(serializer.data['id'])
             self.get_emails(request, serializer.data['id'])
-            self.send_emails(request, serializer.data['id'])
+            # self.send_emails(request, serializer.data['id'])  # used for synchronous task
+            send_emails_task.delay(serializer.data['id'], request.data['text'])  # used for celery - request is removed, text is passed explicitly
         return Response(serializer.data)
 
 
