@@ -46,14 +46,15 @@ class Campaign(models.Model):
     date_start = DateTimeField(verbose_name="время запуска")
     date_finish = DateTimeField(verbose_name="время окончания")
 
+
     def __str__(self):
         return f"рассылка №{self.id} - фильтр ({self.email_filter}) - старт [{self.date_start}]"
 
 
 class Email(models.Model):
     sent_time = DateTimeField(verbose_name="Время отправки", auto_now_add=True)
-    campaign_id = ForeignKey(Campaign, verbose_name="ID рассылки", on_delete=models.PROTECT, related_name='email')
-    customer_id = ForeignKey(Customer, verbose_name="ID клиента", on_delete=models.PROTECT, related_name='email')
+    campaign_id = ForeignKey(Campaign, verbose_name="ID рассылки", on_delete=models.SET_NULL, related_name='email', null=True)
+    customer_id = ForeignKey(Customer, verbose_name="ID клиента", on_delete=models.SET_NULL, related_name='email', null=True)
     is_ok = BooleanField(verbose_name="Статус отправки", default=False)
 
     def __str__(self):
