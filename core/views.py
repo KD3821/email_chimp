@@ -47,7 +47,9 @@ class CampaignModelViewSet(ModelViewSet):
             customer_list = Customer.objects.filter(carrier=customer_carrier).filter(tag=customer_tag).values()
         else:
             customer_list = Customer.objects.filter(carrier=customer_carrier).values()
-        return list(customer_list)
+        if customer_list:
+            return list(customer_list)
+        pass
 
     def get_emails(self, request, id_of_camp, text_of_camp):
         present = datetime.now()
@@ -57,14 +59,22 @@ class CampaignModelViewSet(ModelViewSet):
             delta_left = finish_campaign - present
             time_left = get_sec(str(delta_left))
             mailing_list = self.list_customers(request)
-            send_emails_task.apply_async(args=[id_of_camp, text_of_camp, finish_campaign, mailing_list], expires=time_left)
+            if mailing_list:
+                send_emails_task.apply_async(args=[id_of_camp, text_of_camp, finish_campaign, mailing_list], expires=time_left)
+            else:
+                print("нет клиентов")
+                return
         elif present < start_campaign:
             delta_left = finish_campaign - present
             delta_before = start_campaign - present
             time_left = get_sec(str(delta_left))
             time_before = get_sec(str(delta_before))
             mailing_list = self.list_customers(request)
-            send_emails_task.apply_async(args=[id_of_camp, text_of_camp, finish_campaign, mailing_list], countdown=time_before, expires=time_left)
+            if mailing_list:
+                send_emails_task.apply_async(args=[id_of_camp, text_of_camp, finish_campaign, mailing_list], countdown=time_before, expires=time_left)
+            else:
+                print("нет клиентов")
+                return
         else:
             print("too late!")
         pass
