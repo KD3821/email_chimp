@@ -142,8 +142,8 @@ id клиента - любые операции, которые связаны �
 <ul>
   <li>Django и Django REST framework.</li>
   <li>БД - SQLite</li>
-  <li>Celery</li>
-  <li>RabbitMQ (docker)</li>
+  <li>Celery ( запустить командой: python -m celery -A emails worker -l info )</li>
+  <li>RabbitMQ ( запустить в docker контейнере: docker run -d -p 5672:5672 rabbitmq )</li>
 </ul>
 Сущности проекта:
 <ul>
